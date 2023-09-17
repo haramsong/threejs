@@ -12,6 +12,7 @@ import { HalftonePass } from 'three/examples/jsm/postprocessing/HalftonePass';
 import { UnrealBloomPass } from 'three/examples/jsm/postprocessing/UnrealBloomPass';
 import { OutlinePass } from 'three/examples/jsm/postprocessing/OutlinePass';
 import { SMAAPass } from 'three/examples/jsm/postprocessing/SMAAPass';
+import dat from 'dat.gui';
 
 export default function () {
     const canvasSize = {
@@ -69,6 +70,8 @@ export default function () {
     controls.enableDamping = true;
     controls.dampingFactor = 0.1;
 
+    const gui = new dat.GUI();
+
     const addLight = () => {
         const light = new THREE.DirectionalLight(0xffffff);
         light.position.set(2.65, 2.13, 1.02);
@@ -98,6 +101,70 @@ export default function () {
         // effectComposer.addPass(filmPass);
 
         const shaderPass = new ShaderPass(GammaCorrectionShader);
+
+        const customShaderPass = new ShaderPass({
+            uniforms: {
+                uBrightness: { value : 1 },
+                uPosition: { value: new THREE.Vector2(0, 0)},
+                uColor: { value: new THREE.Vector3(0, 0, 0.3) },
+                uAlpha: { value: 0.5 },
+                tDiffuse: { value: null },
+            },
+            vertexShader: `
+                varying vec2 vPosition;
+                varying vec2 vUv;
+
+                void main() {
+                    // 3D 이미지를 어디까지나 2D이미지로 랜더링 하기때문에 z좌표값 0.0!
+                    gl_Position = vec4(position.x, position.y, 0.0, 1.0);
+                    vPosition = position.xy;
+                    vUv = uv;
+                }
+            `,
+            fragmentShader: `
+                uniform float uBrightness;
+                uniform vec2 uPosition;
+                uniform vec3 uColor;
+                uniform float uAlpha;
+                uniform sampler2D tDiffuse;
+
+                varying vec2 vPosition;
+                varying vec2 vUv;
+
+                void main() {
+                    // vec2 newUV = vec2(vUv.x, vUv.y);
+
+                    // 왼쪽으로 이동하는것 처럼 보이고 그 초과한 부분은 왜곡 현상 일어남 -> 디스토션 현상
+                    vec2 newUV = vec2(vUv.x + uPosition.x, vUv.y + uPosition.y);
+
+                    // 파동 형태 효과(사인 함수 사용)
+                    // vec2 newUV = vec2(vUv.x, vUv.y + sin(vUv.x * 20.0) * 0.1 + uPosition.y);
+                    // vec2 newUV = vec2(vUv.x, vUv.y + sin(vUv.x * 20.0) * 0.1 + uPosition.y);
+
+                    vec4 tex = texture2D(tDiffuse, newUV);
+                    // 값이 커질수록 붉게?되고 작아질수록 푸르게 변함
+                    // tex.r -= 0.1;
+
+                    // tex.rg += vUv;
+                    tex.rgb += uColor;
+
+                    float brightness = sin(uBrightness + vUv.x);
+
+                    gl_FragColor = tex / brightness;
+                }
+            `,
+        });
+        gui.add(customShaderPass.uniforms.uColor.value, 'x', -1, 1, 0.01);
+        gui.add(customShaderPass.uniforms.uColor.value, 'y', -1, 1, 0.01);
+        gui.add(customShaderPass.uniforms.uColor.value, 'z', -1, 1, 0.01);
+
+        gui.add(customShaderPass.uniforms.uPosition.value, 'x', -1, 1, 0.01);
+        gui.add(customShaderPass.uniforms.uPosition.value, 'y', -1, 1, 0.01);
+        gui
+            .add(customShaderPass.uniforms.uBrightness, 'value', 0, 1, 0.01)
+            .name('brightness');
+
+        effectComposer.addPass(customShaderPass);
 
         // 글리치 효과
         const glitchPass = new GlitchPass();
