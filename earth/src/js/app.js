@@ -13,12 +13,16 @@ import { UnrealBloomPass } from 'three/examples/jsm/postprocessing/UnrealBloomPa
 import { OutlinePass } from 'three/examples/jsm/postprocessing/OutlinePass';
 import { SMAAPass } from 'three/examples/jsm/postprocessing/SMAAPass';
 import dat from 'dat.gui';
+import vertexShader from '../shaders/vertex.glsl';
+import fragmentShader from '../shaders/fragment.glsl';
 
 export default function () {
     const canvasSize = {
         width: window.innerWidth,
         height: window.innerHeight,
     }
+
+    const clock = new THREE.Clock();
 
     const renderer = new THREE.WebGLRenderer({
         alpha: true,
@@ -87,7 +91,7 @@ export default function () {
 
         // 옛날 영화 효과
         const filmPass = new FilmPass(
-            1, true,
+            0.3, false,
         );
 
         // deprecated? 속성이 강좌랑 다름
@@ -98,61 +102,20 @@ export default function () {
         // 이건 됨
         // filmPass.uniforms.grayscale.value = true;
 
-        // effectComposer.addPass(filmPass);
+        effectComposer.addPass(filmPass);
 
         const shaderPass = new ShaderPass(GammaCorrectionShader);
 
         const customShaderPass = new ShaderPass({
             uniforms: {
-                uBrightness: { value : 1 },
+                uBrightness: { value : 0.3 },
                 uPosition: { value: new THREE.Vector2(0, 0)},
-                uColor: { value: new THREE.Vector3(0, 0, 0.3) },
+                uColor: { value: new THREE.Vector3(0, 0, 0.15) },
                 uAlpha: { value: 0.5 },
                 tDiffuse: { value: null },
             },
-            vertexShader: `
-                varying vec2 vPosition;
-                varying vec2 vUv;
-
-                void main() {
-                    // 3D 이미지를 어디까지나 2D이미지로 랜더링 하기때문에 z좌표값 0.0!
-                    gl_Position = vec4(position.x, position.y, 0.0, 1.0);
-                    vPosition = position.xy;
-                    vUv = uv;
-                }
-            `,
-            fragmentShader: `
-                uniform float uBrightness;
-                uniform vec2 uPosition;
-                uniform vec3 uColor;
-                uniform float uAlpha;
-                uniform sampler2D tDiffuse;
-
-                varying vec2 vPosition;
-                varying vec2 vUv;
-
-                void main() {
-                    // vec2 newUV = vec2(vUv.x, vUv.y);
-
-                    // 왼쪽으로 이동하는것 처럼 보이고 그 초과한 부분은 왜곡 현상 일어남 -> 디스토션 현상
-                    vec2 newUV = vec2(vUv.x + uPosition.x, vUv.y + uPosition.y);
-
-                    // 파동 형태 효과(사인 함수 사용)
-                    // vec2 newUV = vec2(vUv.x, vUv.y + sin(vUv.x * 20.0) * 0.1 + uPosition.y);
-                    // vec2 newUV = vec2(vUv.x, vUv.y + sin(vUv.x * 20.0) * 0.1 + uPosition.y);
-
-                    vec4 tex = texture2D(tDiffuse, newUV);
-                    // 값이 커질수록 붉게?되고 작아질수록 푸르게 변함
-                    // tex.r -= 0.1;
-
-                    // tex.rg += vUv;
-                    tex.rgb += uColor;
-
-                    float brightness = sin(uBrightness + vUv.x);
-
-                    gl_FragColor = tex / brightness;
-                }
-            `,
+            vertexShader: vertexShader,
+            fragmentShader: fragmentShader,
         });
         gui.add(customShaderPass.uniforms.uColor.value, 'x', -1, 1, 0.01);
         gui.add(customShaderPass.uniforms.uColor.value, 'y', -1, 1, 0.01);
@@ -195,10 +158,10 @@ export default function () {
         const unrealBloomPass = new UnrealBloomPass(
             new THREE.Vector2(canvasSize.width, canvasSize.height),
         );
-        // unrealBloomPass.strength = 1.2;
-        // unrealBloomPass.threshold = 0.2;
-        // unrealBloomPass.radius = 1;
-        // effectComposer.addPass(unrealBloomPass);
+        unrealBloomPass.strength = 0.4;
+        unrealBloomPass.threshold = 0.2;
+        unrealBloomPass.radius = 0.7;
+        effectComposer.addPass(unrealBloomPass);
 
         effectComposer.addPass(shaderPass);
         
@@ -295,7 +258,7 @@ export default function () {
 
         const mesh = new THREE.Mesh(
             new THREE.TorusGeometry(0.02, 0.002, 20, 20),
-            new THREE.MeshBasicMaterial({ color: 0x263d64 })
+            new THREE.MeshBasicMaterial({ color: 0x263d64, transparent: true, })
         );
 
         mesh.position.set(position.x, position.y, position.z);
@@ -315,7 +278,7 @@ export default function () {
 
         const mesh = new THREE.Mesh(
             new THREE.TorusGeometry(0.02, 0.002, 20, 20),
-            new THREE.MeshBasicMaterial({ color: 0x263d64 })
+            new THREE.MeshBasicMaterial({ color: 0x263d64, transparent: true, })
         );
 
         mesh.position.set(position.x, position.y, position.z);
@@ -344,7 +307,7 @@ export default function () {
         )
         const gradientCanvas = getGradientCanvas('#757F94', '#263D74');
         const texture = new THREE.CanvasTexture(gradientCanvas);
-        const material = new THREE.MeshBasicMaterial({ map: texture });
+        const material = new THREE.MeshBasicMaterial({ map: texture, transparent: true, });
 
         const mesh = new THREE.Mesh(geometry, material);
 
@@ -367,7 +330,10 @@ export default function () {
 
         return {
             earthGroup,
-            star
+            star,
+            point1,
+            point2,
+            curve
         }
     }
 
@@ -388,7 +354,7 @@ export default function () {
     }
 
     const draw = (obj) => {
-        const { earthGroup, star } = obj;
+        const { earthGroup, star, point1, point2, curve } = obj;
         earthGroup.rotation.x += 0.0005;
         earthGroup.rotation.y += 0.0005;
 
@@ -397,6 +363,23 @@ export default function () {
 
         controls.update();
         effectComposer.render();
+
+        const timeElapsed = 6 * Math.abs(Math.sin(clock.getElapsedTime() / 3)) - 1;
+
+        let drawRangeCount = curve.geometry.drawRange.count;
+        const progress = timeElapsed / 2;
+        const speed = 3;
+
+        drawRangeCount = progress * speed * 960;
+
+        curve.geometry.setDrawRange(0, drawRangeCount);
+
+        if (timeElapsed > 4) {
+            point1.material.opacity = 5 - timeElapsed;
+            point2.material.opacity = 5 - timeElapsed;
+            curve.material.opacity = 5 - timeElapsed;
+        }
+
         // renderer.render(scene, camera);
         requestAnimationFrame(() => {
             draw(obj);
